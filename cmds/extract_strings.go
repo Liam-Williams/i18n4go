@@ -14,10 +14,13 @@ import (
 
 	"path/filepath"
 
+	"bufio"
 	"encoding/json"
+	"errors"
+	"io"
 	"io/ioutil"
 
-	"github.com/maximilien/i18n4go/common"
+	"github.com/Liam-Williams/i18n4go/common"
 )
 
 type extractStrings struct {
@@ -32,6 +35,7 @@ type extractStrings struct {
 	ExtractedStrings map[string]common.StringInfo
 	FilteredStrings  map[string]string
 	FilteredRegexps  []*regexp.Regexp
+	FilteredLines    []string
 
 	SubstringRegexpsFile string
 	SubstringRegexps     []*regexp.Regexp
@@ -383,6 +387,10 @@ func (es *extractStrings) loadExcludedStrings() error {
 		es.FilteredStrings[excludedStrings.ExcludedStrings[i]] = excludedStrings.ExcludedStrings[i]
 	}
 
+	for _, excludeLine := range excludedStrings.ExcludedLines {
+		es.FilteredLines = append(es.FilteredLines, excludeLine)
+	}
+
 	return nil
 }
 
@@ -504,6 +512,17 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 		}
 	}
 
+	if len(es.FilteredRegexps) > 0 {
+		// If we want to filter out some strings based on a substring in that line of code
+		if line, err := readLine(fset.Position(n.Pos()).Filename, fset.Position(n.Pos()).Line); err == nil {
+			for _, exclude := range es.FilteredLines {
+				if strings.Contains(line, exclude) {
+					return
+				}
+			}
+		}
+	}
+
 	s, _ := strconv.Unquote(basicLit.Value)
 	if len(s) > 0 && basicLit.Kind == token.STRING && s != "\t" && s != "\n" && s != " " && !es.filter(s) { //TODO: fix to remove these: s != "\\t" && s != "\\n" && s != " "
 		position := fset.Position(n.Pos())
@@ -514,6 +533,39 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 			Column:   position.Column}
 		es.ExtractedStrings[s] = stringInfo
 	}
+}
+
+func readLine(fn string, n int) (string, error) {
+	if n < 1 {
+		return "", fmt.Errorf("invalid request: line %d", n)
+	}
+	f, err := os.Open(fn)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	bf := bufio.NewReader(f)
+	var line string
+	for lnum := 0; lnum < n; lnum++ {
+		line, err = bf.ReadString('\n')
+		if err == io.EOF {
+			switch lnum {
+			case 0:
+				return "", errors.New("no lines in file")
+			case 1:
+				return "", errors.New("only 1 line")
+			default:
+				return "", fmt.Errorf("only %d lines", lnum)
+			}
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	if line == "" {
+		return "", fmt.Errorf("line %d empty", n)
+	}
+	return line, nil
 }
 
 func (es *extractStrings) excludeImports(astFile *ast.File) {

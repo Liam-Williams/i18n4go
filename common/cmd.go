@@ -57,6 +57,7 @@ type StringInfo struct {
 
 type ExcludedStrings struct {
 	ExcludedStrings []string `json:"excludedStrings"`
+	ExcludedLines   []string `json:"excludedLines"`
 	ExcludedRegexps []string `json:"excludedRegexps"`
 }
 
