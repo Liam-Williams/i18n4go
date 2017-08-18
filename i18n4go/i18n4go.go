@@ -9,8 +9,8 @@ import (
 
 	"runtime/debug"
 
-	"github.com/maximilien/i18n4go/cmds"
-	"github.com/maximilien/i18n4go/common"
+	"github.com/Liam-Williams/i18n4go/cmds"
+	"github.com/Liam-Williams/i18n4go/common"
 )
 
 const VERSION = "v0.2.4"
@@ -384,7 +384,7 @@ func handlePanic() {
 func displayCrashDialog(errorMessage string) {
 	formattedString := `
 Something completely unexpected happened. This is a bug in %s.
-Please file this bug : https://github.com/maximilien/i18n4go/issues
+Please file this bug : https://github.com/Liam-Williams/i18n4go/issues
 Tell us that you ran this command:
 
 	%s

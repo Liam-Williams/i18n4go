@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/maximilien/i18n4go/common"
+	"github.com/Liam-Williams/i18n4go/common"
 )
 
 type MergeStrings struct {

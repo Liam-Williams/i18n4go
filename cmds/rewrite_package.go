@@ -13,7 +13,7 @@ import (
 	"go/token"
 	"io/ioutil"
 
-	"github.com/maximilien/i18n4go/common"
+	"github.com/Liam-Williams/i18n4go/common"
 
 	"path/filepath"
 	"strconv"
@@ -26,7 +26,7 @@ const (
 import (
 	"path/filepath"
 
-	i18n "github.com/maximilien/i18n4go/i18n"
+	i18n "github.com/Liam-Williams/i18n4go/i18n"
 	goi18n "github.com/nicksnyder/go-i18n/i18n"
 )
 
