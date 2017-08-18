@@ -3,7 +3,7 @@ package fixup_test
 import (
 	"testing"
 
-	"github.com/maximilien/i18n4go/integration/test_helpers"
+	"github.com/Liam-Williams/i18n4go/integration/test_helpers"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
