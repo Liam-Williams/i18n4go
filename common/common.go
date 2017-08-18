@@ -137,7 +137,8 @@ func SaveStrings(printer PrinterInterface, options Options, stringInfos map[stri
 	}
 	jsonData = UnescapeHTML(jsonData)
 
-	outputFilename := filepath.Join(outputDirname, fileName[strings.LastIndex(fileName, string(os.PathSeparator))+1:len(fileName)])
+	// Use the full path of the filename in the output dir, so that files with the same name don't overwrite each other
+	outputFilename := filepath.Join(outputDirname, strings.Replace(fileName, string(os.PathSeparator), "-", -1))
 	if len(stringInfos) != 0 {
 		printer.Println("Saving extracted i18n strings to file:", outputFilename)
 	}
