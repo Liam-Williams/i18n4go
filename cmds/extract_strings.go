@@ -32,10 +32,11 @@ type extractStrings struct {
 	Filename      string
 	OutputDirname string
 
-	ExtractedStrings map[string]common.StringInfo
-	FilteredStrings  map[string]string
-	FilteredRegexps  []*regexp.Regexp
-	FilteredLines    []string
+	ExtractedStrings 	map[string]common.StringInfo
+	FilteredStrings  	map[string]string
+	FilteredRegexps  	[]*regexp.Regexp
+	FilteredLines    	[]string
+	FilteredFileRegexps *regexp.Regexp
 
 	SubstringRegexpsFile string
 	SubstringRegexps     []*regexp.Regexp
@@ -247,6 +248,13 @@ func (es *extractStrings) InspectDir(dirName string, recursive bool) error {
 				es.Println("No match for ignore-regexp:", es.options.IgnoreRegexpFlag)
 			}
 
+			if es.FilteredFileRegexps != nil {
+				if es.FilteredFileRegexps.MatchString(fileName) {
+					es.Println("Using ignore-regexp:", es.options.IgnoreRegexpFlag)
+					continue
+				}
+			}
+
 			if strings.HasSuffix(fileName, ".go") {
 				err = es.InspectFile(fileName)
 				if err != nil {
@@ -389,6 +397,11 @@ func (es *extractStrings) loadExcludedStrings() error {
 
 	for _, excludeLine := range excludedStrings.ExcludedLines {
 		es.FilteredLines = append(es.FilteredLines, excludeLine)
+	}
+
+	if len(excludedStrings.ExcludedFileRegexps) > 0 {
+		excludeFileRegexs := strings.Join(excludedStrings.ExcludedFileRegexps, "|")
+		es.FilteredFileRegexps = regexp.MustCompile(excludeFileRegexs)
 	}
 
 	return nil
