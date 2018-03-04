@@ -1,9 +1,16 @@
 package cmds
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"encoding/json"
+	"io/ioutil"
+
+	"reflect"
 
 	"github.com/Liam-Williams/i18n4go/common"
 )
@@ -86,10 +93,88 @@ func (vs *verifyStrings) determineTargetFilenames(inputFilename string, inputFil
 	return targetFilenames
 }
 
+type I18nStringInfo struct {
+	ID          string      `json:"id"`
+	Translation interface{} `json:"translation"`
+	Modified    bool        `json:"modified"`
+}
+
+func (info I18nStringInfo) Translations() (translations []string) {
+	switch v := info.Translation.(type) {
+	case string:
+		translations = append(translations, v)
+	case map[string]interface{}:
+		for _, val := range v {
+			switch s := val.(type) {
+			case string:
+				translations = append(translations, s)
+			}
+		}
+	default:
+		panic(fmt.Sprintf("Unexpected type %v", reflect.TypeOf(v)))
+	}
+	return
+}
+
+func LoadI18nStringInfos(fileName string) ([]I18nStringInfo, error) {
+	_, err := os.Stat(fileName)
+	if os.IsNotExist(err) {
+		return nil, err
+	}
+
+	content, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	var i18nStringInfos []I18nStringInfo
+	err = json.Unmarshal(content, &i18nStringInfos)
+	if err != nil {
+		return nil, err
+	}
+
+	return i18nStringInfos, nil
+}
+
+func CreateI18nStringInfoMap(i18nStringInfos []I18nStringInfo) (map[string]I18nStringInfo, error) {
+	inputMap := make(map[string]I18nStringInfo, len(i18nStringInfos))
+
+	for _, i18nStringInfo := range i18nStringInfos {
+
+		if _, ok := inputMap[i18nStringInfo.ID]; !ok {
+			inputMap[i18nStringInfo.ID] = i18nStringInfo
+		} else {
+			return nil, errors.New("Duplicated key found: " + i18nStringInfo.ID)
+		}
+
+	}
+
+	return inputMap, nil
+}
+
+func SaveI18nStringInfos(printer common.PrinterInterface, options common.Options, i18nStringInfos []I18nStringInfo, fileName string) error {
+	jsonData, err := json.MarshalIndent(i18nStringInfos, "", "   ")
+	if err != nil {
+		printer.Println(err)
+		return err
+	}
+	jsonData = common.UnescapeHTML(jsonData)
+
+	if !options.DryRunFlag && len(i18nStringInfos) != 0 {
+		err := ioutil.WriteFile(fileName, jsonData, 0644)
+		if err != nil {
+			printer.Println(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (vs *verifyStrings) verify(inputFilename string, targetFilename string) error {
 	common.CheckFile(targetFilename)
 
-	inputI18nStringInfos, err := common.LoadI18nStringInfos(inputFilename)
+	inputI18nStringInfos, err := LoadI18nStringInfos(inputFilename)
 	if err != nil {
 		vs.Println("i18n4go: Error loading the i18n strings from input filename:", inputFilename)
 		return err
@@ -99,18 +184,18 @@ func (vs *verifyStrings) verify(inputFilename string, targetFilename string) err
 		return fmt.Errorf("i18n4go: Error input file: %s is empty", inputFilename)
 	}
 
-	inputMap, err := common.CreateI18nStringInfoMap(inputI18nStringInfos)
+	inputMap, err := CreateI18nStringInfoMap(inputI18nStringInfos)
 	if err != nil {
 		return fmt.Errorf("File has duplicated key: %s\n%s", inputFilename, err)
 	}
 
-	targetI18nStringInfos, err := common.LoadI18nStringInfos(targetFilename)
+	targetI18nStringInfos, err := LoadI18nStringInfos(targetFilename)
 	if err != nil {
 		vs.Println("i18n4go: Error loading the i18n strings from target filename:", targetFilename)
 		return err
 	}
 
-	var targetExtraStringInfos, targetInvalidStringInfos []common.I18nStringInfo
+	var targetExtraStringInfos, targetInvalidStringInfos []I18nStringInfo
 	for _, stringInfo := range targetI18nStringInfos {
 		if _, ok := inputMap[stringInfo.ID]; ok {
 			if common.IsTemplatedString(stringInfo.ID) && vs.isTemplatedStringTranslationInvalid(stringInfo) {
@@ -164,34 +249,40 @@ func (vs *verifyStrings) verify(inputFilename string, targetFilename string) err
 	return verficationError
 }
 
-func (vs *verifyStrings) isTemplatedStringTranslationInvalid(stringInfo common.I18nStringInfo) bool {
-	if !common.IsTemplatedString(stringInfo.ID) || !common.IsTemplatedString(stringInfo.Translation) {
+func (vs *verifyStrings) isTemplatedStringTranslationInvalid(stringInfo I18nStringInfo) bool {
+	if !common.IsTemplatedString(stringInfo.ID) {
 		return false
 	}
-
-	translationArgs := common.GetTemplatedStringArgs(stringInfo.Translation)
-	argsMap := make(map[string]string)
-	for _, translationArg := range translationArgs {
-		argsMap[translationArg] = translationArg
-	}
-
-	var missingArgs []string
-	idArgs := common.GetTemplatedStringArgs(stringInfo.ID)
-	for _, idArg := range idArgs {
-		if _, ok := argsMap[idArg]; !ok {
-			missingArgs = append(missingArgs, idArg)
+	translations := stringInfo.Translations()
+	for _, translation := range translations {
+		if !common.IsTemplatedString(translation) {
+			return false
 		}
-	}
 
-	if len(missingArgs) > 0 {
-		vs.Println("i18n4go: templated string is invalid, missing args in translation:", strings.Join(missingArgs, ","))
-		return true
+		translationArgs := common.GetTemplatedStringArgs(translation)
+		argsMap := make(map[string]string)
+		for _, translationArg := range translationArgs {
+			argsMap[translationArg] = translationArg
+		}
+
+		var missingArgs []string
+		idArgs := common.GetTemplatedStringArgs(stringInfo.ID)
+		for _, idArg := range idArgs {
+			if _, ok := argsMap[idArg]; !ok {
+				missingArgs = append(missingArgs, idArg)
+			}
+		}
+
+		if len(missingArgs) > 0 {
+			vs.Println("i18n4go: templated string is invalid, missing args in translation:", strings.Join(missingArgs, ","))
+			return true
+		}
 	}
 
 	return false
 }
 
-func keysForI18nStringInfos(in18nStringInfos []common.I18nStringInfo) []string {
+func keysForI18nStringInfos(in18nStringInfos []I18nStringInfo) []string {
 	var keys []string
 	for _, stringInfo := range in18nStringInfos {
 		keys = append(keys, stringInfo.ID)
@@ -199,7 +290,7 @@ func keysForI18nStringInfos(in18nStringInfos []common.I18nStringInfo) []string {
 	return keys
 }
 
-func keysForI18nStringInfoMap(inputMap map[string]common.I18nStringInfo) []string {
+func keysForI18nStringInfoMap(inputMap map[string]I18nStringInfo) []string {
 	var keys []string
 	for k, _ := range inputMap {
 		keys = append(keys, k)
@@ -207,15 +298,15 @@ func keysForI18nStringInfoMap(inputMap map[string]common.I18nStringInfo) []strin
 	return keys
 }
 
-func valuesForI18nStringInfoMap(inputMap map[string]common.I18nStringInfo) []common.I18nStringInfo {
-	var values []common.I18nStringInfo
+func valuesForI18nStringInfoMap(inputMap map[string]I18nStringInfo) []I18nStringInfo {
+	var values []I18nStringInfo
 	for _, v := range inputMap {
 		values = append(values, v)
 	}
 	return values
 }
 
-func (vs *verifyStrings) generateMissingKeysDiffFile(missingStringInfos []common.I18nStringInfo, fileName string) (string, error) {
+func (vs *verifyStrings) generateMissingKeysDiffFile(missingStringInfos []I18nStringInfo, fileName string) (string, error) {
 	name, pathName, err := common.CheckFile(fileName)
 	if err != nil {
 		return "", err
@@ -229,10 +320,10 @@ func (vs *verifyStrings) generateMissingKeysDiffFile(missingStringInfos []common
 		diffFilename = filepath.Join(pathName, diffFilename)
 	}
 
-	return diffFilename, common.SaveI18nStringInfos(vs, vs.Options(), missingStringInfos, diffFilename)
+	return diffFilename, SaveI18nStringInfos(vs, vs.Options(), missingStringInfos, diffFilename)
 }
 
-func (vs *verifyStrings) generateExtraKeysDiffFile(extraStringInfos []common.I18nStringInfo, fileName string) (string, error) {
+func (vs *verifyStrings) generateExtraKeysDiffFile(extraStringInfos []I18nStringInfo, fileName string) (string, error) {
 	name, pathName, err := common.CheckFile(fileName)
 	if err != nil {
 		return "", err
@@ -246,10 +337,10 @@ func (vs *verifyStrings) generateExtraKeysDiffFile(extraStringInfos []common.I18
 		diffFilename = filepath.Join(pathName, diffFilename)
 	}
 
-	return diffFilename, common.SaveI18nStringInfos(vs, vs.Options(), extraStringInfos, diffFilename)
+	return diffFilename, SaveI18nStringInfos(vs, vs.Options(), extraStringInfos, diffFilename)
 }
 
-func (vs *verifyStrings) generateInvalidTranslationDiffFile(invalidStringInfos []common.I18nStringInfo, fileName string) (string, error) {
+func (vs *verifyStrings) generateInvalidTranslationDiffFile(invalidStringInfos []I18nStringInfo, fileName string) (string, error) {
 	name, pathName, err := common.CheckFile(fileName)
 	if err != nil {
 		return "", err
@@ -263,5 +354,5 @@ func (vs *verifyStrings) generateInvalidTranslationDiffFile(invalidStringInfos [
 		diffFilename = filepath.Join(pathName, diffFilename)
 	}
 
-	return diffFilename, common.SaveI18nStringInfos(vs, vs.Options(), invalidStringInfos, diffFilename)
+	return diffFilename, SaveI18nStringInfos(vs, vs.Options(), invalidStringInfos, diffFilename)
 }
