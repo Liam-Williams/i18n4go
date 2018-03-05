@@ -260,21 +260,38 @@ func (vs *verifyStrings) isTemplatedStringTranslationInvalid(stringInfo I18nStri
 		}
 
 		translationArgs := common.GetTemplatedStringArgs(translation)
-		argsMap := make(map[string]string)
+		argsMap := make(map[string]string, len(translationArgs))
 		for _, translationArg := range translationArgs {
 			argsMap[translationArg] = translationArg
 		}
 
-		var missingArgs []string
 		idArgs := common.GetTemplatedStringArgs(stringInfo.ID)
+		idArgMap := make(map[string]string, len(idArgs))
 		for _, idArg := range idArgs {
-			if _, ok := argsMap[idArg]; !ok {
+			idArgMap[idArg] = idArg
+		}
+
+		var missingArgs []string
+		for _, idArg := range idArgs {
+			if _, ok := argsMap[idArg]; !ok && idArg != "count" {
 				missingArgs = append(missingArgs, idArg)
 			}
 		}
 
 		if len(missingArgs) > 0 {
 			vs.Println("i18n4go: templated string is invalid, missing args in translation:", strings.Join(missingArgs, ","))
+			return true
+		}
+
+		var excessArgs []string
+		for _, translationArg := range translationArgs {
+			if _, ok := idArgMap[translationArg]; !ok {
+				excessArgs = append(excessArgs, translationArg)
+			}
+		}
+
+		if len(excessArgs) > 0 {
+			vs.Println("i18n4go: templated string is invalid, excess args in translation:", strings.Join(excessArgs, ","))
 			return true
 		}
 	}
