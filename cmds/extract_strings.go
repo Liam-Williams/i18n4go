@@ -32,10 +32,10 @@ type extractStrings struct {
 	Filename      string
 	OutputDirname string
 
-	ExtractedStrings 	map[string]common.StringInfo
-	FilteredStrings  	map[string]string
-	FilteredRegexps  	[]*regexp.Regexp
-	FilteredLines    	[]string
+	ExtractedStrings    map[string]common.StringInfo
+	FilteredStrings     map[string]string
+	FilteredRegexps     []*regexp.Regexp
+	FilteredLines       []string
 	FilteredFileRegexps *regexp.Regexp
 
 	SubstringRegexpsFile string
@@ -240,7 +240,7 @@ func (es *extractStrings) InspectDir(dirName string, recursive bool) error {
 
 	for k, pkg := range packages {
 		es.Println("Extracting strings in package:", k)
-		for fileName, _ := range pkg.Files {
+		for fileName := range pkg.Files {
 			if es.IgnoreRegexp != nil && es.IgnoreRegexp.MatchString(fileName) {
 				es.Println("Using ignore-regexp:", es.options.IgnoreRegexpFlag)
 				continue
@@ -506,6 +506,7 @@ func (es *extractStrings) extractString(f *ast.File, fset *token.FileSet) error 
 }
 
 func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fset *token.FileSet) {
+	foundSubstring := false
 	for _, compiledRegexp := range es.SubstringRegexps {
 		if compiledRegexp.MatchString(basicLit.Value) {
 			submatches := compiledRegexp.FindStringSubmatch(basicLit.Value)
@@ -521,8 +522,11 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 				Line:     position.Line,
 				Column:   position.Column}
 			es.ExtractedStrings[captureGroup] = stringInfo
-			return
+			foundSubstring = true
 		}
+	}
+	if foundSubstring {
+		return
 	}
 
 	if len(es.FilteredRegexps) > 0 {
