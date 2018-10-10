@@ -61,9 +61,9 @@ func NewExtractStrings(options common.Options) extractStrings {
 	return extractStrings{options: options,
 		Filename:         "extracted_strings.json",
 		OutputDirname:    options.OutputDirFlag,
-		ExtractedStrings: nil,
-		FilteredStrings:  nil,
-		FilteredRegexps:  nil,
+		ExtractedStrings: make(map[string]common.StringInfo),
+		FilteredStrings:  make(map[string]string),
+		FilteredRegexps:  []*regexp.Regexp{},
 		SubstringRegexps: nil,
 		TotalStringsDir:  0,
 		TotalStrings:     0,
@@ -93,6 +93,28 @@ func (es *extractStrings) Printf(msg string, a ...interface{}) (int, error) {
 }
 
 func (es *extractStrings) Run() error {
+	err := es.loadExcludedStrings()
+	if err != nil {
+		es.Println(err)
+		return err
+	}
+	es.Println(fmt.Sprintf("Loaded %d excluded strings", len(es.FilteredStrings)))
+
+	err = es.loadExcludedRegexps()
+	if err != nil {
+		es.Println(err)
+		return err
+	}
+	es.Println(fmt.Sprintf("Loaded %d excluded regexps", len(es.FilteredRegexps)))
+
+	if es.options.SubstringFilenameFlag != "" {
+		err := es.loadSubstringRegexps()
+		if err != nil {
+			es.Println(err)
+			return err
+		}
+		es.Println(fmt.Sprintf("Loaded %d substring regexps", len(es.FilteredRegexps)))
+	}
 	if es.options.FilenameFlag != "" {
 		return es.InspectFile(es.options.FilenameFlag)
 	} else {
@@ -113,10 +135,6 @@ func (es *extractStrings) InspectFile(filename string) error {
 	if es.options.DryRunFlag {
 		es.Println("WARNING running in -dry-run mode")
 	}
-
-	es.ExtractedStrings = make(map[string]common.StringInfo)
-	es.FilteredStrings = make(map[string]string)
-	es.FilteredRegexps = []*regexp.Regexp{}
 
 	es.setFilename(filename)
 	es.setI18nFilename(filename)
@@ -143,29 +161,6 @@ func (es *extractStrings) InspectFile(filename string) error {
 	if err != nil {
 		es.Println(err)
 		return err
-	}
-
-	err = es.loadExcludedStrings()
-	if err != nil {
-		es.Println(err)
-		return err
-	}
-	es.Println(fmt.Sprintf("Loaded %d excluded strings", len(es.FilteredStrings)))
-
-	err = es.loadExcludedRegexps()
-	if err != nil {
-		es.Println(err)
-		return err
-	}
-	es.Println(fmt.Sprintf("Loaded %d excluded regexps", len(es.FilteredRegexps)))
-
-	if es.options.SubstringFilenameFlag != "" {
-		err := es.loadSubstringRegexps()
-		if err != nil {
-			es.Println(err)
-			return err
-		}
-		es.Println(fmt.Sprintf("Loaded %d substring regexps", len(es.FilteredRegexps)))
 	}
 
 	es.excludeImports(astFile)
@@ -466,7 +461,6 @@ func (es *extractStrings) loadSubstringRegexps() error {
 		fmt.Print(err)
 		return err
 	}
-
 	for _, regexpString := range captureGroupStrings.RegexpsStrings {
 		compiledRegexp, err := regexp.Compile(regexpString)
 		if err != nil {
