@@ -243,7 +243,7 @@ func (vs *verifyStrings) verify(inputFilename string, targetFilename string) err
 			return err
 		}
 		vs.Println("i18n4go: generated diff file:", diffFilename)
-		verficationError = fmt.Errorf("i18n4go: target file is missing i18n strings with IDs:\n%s", strings.Join(keysForI18nStringInfoMap(inputMap), "\n"))
+		verficationError = fmt.Errorf("i18n4go: target file is missing i18n strings with IDs: %s", strings.Join(keysForI18nStringInfoMap(inputMap), ","))
 	}
 
 	return verficationError

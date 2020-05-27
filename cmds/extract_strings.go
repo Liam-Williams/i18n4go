@@ -538,7 +538,7 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 					// There may be an edge case when a user calls .SetCode("text") after SetMessage but
 					// the easy fix would be to use a const or re-order the call
 					funcIndex := strings.Index(line, "SetMessage(")
-					if funcIndex == -1 || int(n.Pos()) < strings.Index(line, "SetMessage(") {
+					if funcIndex == -1 || fset.Position(n.Pos()).Column < funcIndex {
 						return
 					}
 				}
@@ -558,15 +558,9 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 	}
 }
 
-// Could be LRU if memory usage is a concern
-var readLineCache = map[string]string{}
-
 func readLine(fn string, n int) (string, error) {
 	if n < 1 {
 		return "", fmt.Errorf("invalid request: line %d", n)
-	}
-	if v, ok := readLineCache[fn+string(n)]; ok {
-		return v, nil
 	}
 	f, err := os.Open(fn)
 	if err != nil {
@@ -594,7 +588,6 @@ func readLine(fn string, n int) (string, error) {
 	if line == "" {
 		return "", fmt.Errorf("line %d empty", n)
 	}
-	readLineCache[fn+string(n)] = line
 	return line, nil
 }
 
