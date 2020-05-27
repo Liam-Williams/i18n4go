@@ -528,7 +528,19 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 		if line, err := readLine(fset.Position(n.Pos()).Filename, fset.Position(n.Pos()).Line); err == nil {
 			for _, exclude := range es.FilteredLines {
 				if strings.Contains(line, exclude) {
-					return
+					// We do not want to exclude a line if we detect a SetMessage call
+					// to the left of the current node position
+					//
+					// e.g. e.Wrap(err, "apple").SetMessage("banana")
+					// Node position of "apple" is less than "SetMessage(" so it will return (excluded)
+					// Node position of "banana" is greater than "SetMessage(" so it will proceed
+					//
+					// There may be an edge case when a user calls .SetCode("text") after SetMessage but
+					// the easy fix would be to use a const or re-order the call
+					funcIndex := strings.Index(line, "SetMessage(")
+					if funcIndex == -1 || int(n.Pos()) < strings.Index(line, "SetMessage(") {
+						return
+					}
 				}
 			}
 		}
@@ -546,9 +558,15 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 	}
 }
 
+// Could be LRU if memory usage is a concern
+var readLineCache = map[string]string{}
+
 func readLine(fn string, n int) (string, error) {
 	if n < 1 {
 		return "", fmt.Errorf("invalid request: line %d", n)
+	}
+	if v, ok := readLineCache[fn+string(n)]; ok {
+		return v, nil
 	}
 	f, err := os.Open(fn)
 	if err != nil {
@@ -576,6 +594,7 @@ func readLine(fn string, n int) (string, error) {
 	if line == "" {
 		return "", fmt.Errorf("line %d empty", n)
 	}
+	readLineCache[fn+string(n)] = line
 	return line, nil
 }
 
