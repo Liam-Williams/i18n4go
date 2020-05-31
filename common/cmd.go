@@ -60,6 +60,7 @@ type ExcludedStrings struct {
 	ExcludedLines       []string `json:"excludedLines"`
 	ExcludedRegexps     []string `json:"excludedRegexps"`
 	ExcludedFileRegexps []string `json:"excludedFileRegexps"`
+	EnforcedFuncs       []string `json:"enforcedFuncs"`
 }
 
 type PrinterInterface interface {

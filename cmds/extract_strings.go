@@ -37,6 +37,7 @@ type extractStrings struct {
 	FilteredRegexps     []*regexp.Regexp
 	FilteredLines       []string
 	FilteredFileRegexps *regexp.Regexp
+	EnforcedFuncs       []string
 
 	SubstringRegexpsFile string
 	SubstringRegexps     []*regexp.Regexp
@@ -399,6 +400,10 @@ func (es *extractStrings) loadExcludedStrings() error {
 		es.FilteredFileRegexps = regexp.MustCompile(excludeFileRegexs)
 	}
 
+	for _, enforcedFunc := range excludedStrings.EnforcedFuncs {
+		es.EnforcedFuncs = append(es.EnforcedFuncs, enforcedFunc)
+	}
+
 	return nil
 }
 
@@ -477,9 +482,19 @@ func (es *extractStrings) extractString(f *ast.File, fset *token.FileSet) error 
 	shouldProcessBasicLit := true
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
+		case *ast.ExprStmt:
+			es.processEnforcedFunc(x.X, fset)
+		case *ast.AssignStmt:
+			for _, expr := range x.Rhs {
+				es.processEnforcedFunc(expr, fset)
+			}
+		case *ast.ReturnStmt:
+			for _, expr := range x.Results {
+				es.processEnforcedFunc(expr, fset)
+			}
 		case *ast.BasicLit:
 			if shouldProcessBasicLit {
-				es.processBasicLit(x, n, fset)
+				es.processBasicLit(x, n, fset, false)
 			}
 			shouldProcessBasicLit = true
 		case *ast.IndexExpr:
@@ -499,7 +514,7 @@ func (es *extractStrings) extractString(f *ast.File, fset *token.FileSet) error 
 	return nil
 }
 
-func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fset *token.FileSet) {
+func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fset *token.FileSet, mustInclude bool) {
 	foundSubstring := false
 	for _, compiledRegexp := range es.SubstringRegexps {
 		if compiledRegexp.MatchString(basicLit.Value) {
@@ -523,31 +538,19 @@ func (es *extractStrings) processBasicLit(basicLit *ast.BasicLit, n ast.Node, fs
 		return
 	}
 
-	if len(es.FilteredRegexps) > 0 {
+	if len(es.FilteredRegexps) > 0 && !mustInclude {
 		// If we want to filter out some strings based on a substring in that line of code
 		if line, err := readLine(fset.Position(n.Pos()).Filename, fset.Position(n.Pos()).Line); err == nil {
 			for _, exclude := range es.FilteredLines {
 				if strings.Contains(line, exclude) {
-					// We do not want to exclude a line if we detect a SetMessage call
-					// to the left of the current node position
-					//
-					// e.g. e.Wrap(err, "apple").SetMessage("banana")
-					// Node position of "apple" is less than "SetMessage(" so it will return (excluded)
-					// Node position of "banana" is greater than "SetMessage(" so it will proceed
-					//
-					// There may be an edge case when a user calls .SetCode("text") after SetMessage but
-					// the easy fix would be to use a const or re-order the call
-					funcIndex := strings.Index(line, "SetMessage(")
-					if funcIndex == -1 || fset.Position(n.Pos()).Column < funcIndex {
-						return
-					}
+					return
 				}
 			}
 		}
 	}
 
 	s, _ := strconv.Unquote(basicLit.Value)
-	if len(s) > 0 && basicLit.Kind == token.STRING && s != "\t" && s != "\n" && s != " " && !es.filter(s) { //TODO: fix to remove these: s != "\\t" && s != "\\n" && s != " "
+	if len(s) > 0 && basicLit.Kind == token.STRING && s != "\t" && s != "\n" && s != " " && !es.filter(s) { // TODO: fix to remove these: s != "\\t" && s != "\\n" && s != " "
 		position := fset.Position(n.Pos())
 		stringInfo := common.StringInfo{Value: s,
 			Filename: position.Filename,
@@ -617,4 +620,20 @@ func (es *extractStrings) filter(aString string) bool {
 	}
 
 	return false
+}
+
+func (es *extractStrings) processEnforcedFunc(expr ast.Expr, fset *token.FileSet) {
+	if call, ok := expr.(*ast.CallExpr); ok {
+		if fun, ok := call.Fun.(*ast.SelectorExpr); ok {
+			for _, enforcedFunc := range es.EnforcedFuncs {
+				if fun.Sel.Name == enforcedFunc {
+					for _, arg := range call.Args {
+						if b, ok := arg.(*ast.BasicLit); ok {
+							es.processBasicLit(b, arg, fset, true)
+						}
+					}
+				}
+			}
+		}
+	}
 }
