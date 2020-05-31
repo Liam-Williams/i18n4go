@@ -492,6 +492,16 @@ func (es *extractStrings) extractString(f *ast.File, fset *token.FileSet) error 
 			for _, expr := range x.Results {
 				es.processEnforcedFunc(expr, fset)
 			}
+		case ast.Decl:
+			if gen, ok := x.(*ast.GenDecl); ok {
+				for _, spec := range gen.Specs {
+					if valSpec, ok := spec.(*ast.ValueSpec); ok {
+						for _, expr := range valSpec.Values {
+							es.processEnforcedFunc(expr, fset)
+						}
+					}
+				}
+			}
 		case *ast.BasicLit:
 			if shouldProcessBasicLit {
 				es.processBasicLit(x, n, fset, false)
