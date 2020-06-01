@@ -482,26 +482,8 @@ func (es *extractStrings) extractString(f *ast.File, fset *token.FileSet) error 
 	shouldProcessBasicLit := true
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
-		case *ast.ExprStmt:
-			es.processEnforcedFunc(x.X, fset)
-		case *ast.AssignStmt:
-			for _, expr := range x.Rhs {
-				es.processEnforcedFunc(expr, fset)
-			}
-		case *ast.ReturnStmt:
-			for _, expr := range x.Results {
-				es.processEnforcedFunc(expr, fset)
-			}
-		case ast.Decl:
-			if gen, ok := x.(*ast.GenDecl); ok {
-				for _, spec := range gen.Specs {
-					if valSpec, ok := spec.(*ast.ValueSpec); ok {
-						for _, expr := range valSpec.Values {
-							es.processEnforcedFunc(expr, fset)
-						}
-					}
-				}
-			}
+		case *ast.CallExpr:
+			es.processEnforcedFunc(x, fset)
 		case *ast.BasicLit:
 			if shouldProcessBasicLit {
 				es.processBasicLit(x, n, fset, false)
@@ -632,22 +614,20 @@ func (es *extractStrings) filter(aString string) bool {
 	return false
 }
 
-func (es *extractStrings) processEnforcedFunc(expr ast.Expr, fset *token.FileSet) {
-	if call, ok := expr.(*ast.CallExpr); ok {
-		if fun, ok := call.Fun.(*ast.SelectorExpr); ok {
-			for _, enforcedFunc := range es.EnforcedFuncs {
-				if fun.Sel.Name == enforcedFunc {
-					for _, arg := range call.Args {
-						if b, ok := arg.(*ast.BasicLit); ok {
-							es.processBasicLit(b, arg, fset, true)
-							return
-						}
-						// in case a string argument is wrapped by fmt.Sprintf or similar funcs
-						if innerCall, ok := arg.(*ast.CallExpr); ok {
-							for _, innerArg := range innerCall.Args {
-								if innerB, ok := innerArg.(*ast.BasicLit); ok {
-									es.processBasicLit(innerB, innerArg, fset, true)
-								}
+func (es *extractStrings) processEnforcedFunc(call *ast.CallExpr, fset *token.FileSet) {
+	if fun, ok := call.Fun.(*ast.SelectorExpr); ok {
+		for _, enforcedFunc := range es.EnforcedFuncs {
+			if fun.Sel.Name == enforcedFunc {
+				for _, arg := range call.Args {
+					if b, ok := arg.(*ast.BasicLit); ok {
+						es.processBasicLit(b, arg, fset, true)
+						return
+					}
+					// in case a string argument is wrapped by fmt.Sprintf or similar funcs
+					if innerCall, ok := arg.(*ast.CallExpr); ok {
+						for _, innerArg := range innerCall.Args {
+							if innerB, ok := innerArg.(*ast.BasicLit); ok {
+								es.processBasicLit(innerB, innerArg, fset, true)
 							}
 						}
 					}
