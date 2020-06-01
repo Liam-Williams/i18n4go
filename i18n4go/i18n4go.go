@@ -13,7 +13,7 @@ import (
 	"github.com/Liam-Williams/i18n4go/common"
 )
 
-const VERSION = "v0.2.4"
+const VERSION = "v0.2.7"
 
 var options common.Options
 
