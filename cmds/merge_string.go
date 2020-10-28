@@ -1,9 +1,12 @@
 package cmds
 
 import (
+	"context"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"io/ioutil"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -62,10 +65,19 @@ func (ms *MergeStrings) combineStringInfosPerDirectory(directory string) error {
 
 	var eg errgroup.Group
 	var combinedMap sync.Map
+	maxWorkers := runtime.GOMAXPROCS(0)
+	sem := semaphore.NewWeighted(int64(maxWorkers))
 
 	for _, file := range fileList {
+		// There are a lot of files! Use semaphores to based on maxWorkers
+		// to limit the number of running goroutines.
+		if err := sem.Acquire(context.TODO(), 1); err != nil {
+			return fmt.Errorf("err acquiring semaphore: %w", err)
+		}
+		
 		f := file // copy file for goroutine closure
 		eg.Go(func() error {
+			defer sem.Release(1)
 			StringInfos, err := common.LoadI18nStringInfos(f)
 			if err != nil {
 				return fmt.Errorf("err retrieving file %v: %w", f, err)
