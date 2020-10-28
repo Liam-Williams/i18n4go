@@ -3,7 +3,6 @@ package cmds
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sync/semaphore"
 	"io/ioutil"
 	"path/filepath"
 	"runtime"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/Liam-Williams/i18n4go/common"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 type MergeStrings struct {
