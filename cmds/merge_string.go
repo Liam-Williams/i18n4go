@@ -69,7 +69,7 @@ func (ms *MergeStrings) combineStringInfosPerDirectory(directory string) error {
 	sem := semaphore.NewWeighted(int64(maxWorkers))
 
 	for _, file := range fileList {
-		// There are a lot of files! Use semaphores to based on maxWorkers
+		// There are a lot of files! Use a semaphore based on maxWorkers
 		// to limit the number of running goroutines.
 		if err := sem.Acquire(context.TODO(), 1); err != nil {
 			return fmt.Errorf("err acquiring semaphore: %w", err)
