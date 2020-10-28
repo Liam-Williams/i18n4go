@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Liam-Williams/i18n4go/common"
+	"golang.org/x/sync/errgroup"
 )
 
 type MergeStrings struct {
@@ -58,19 +60,34 @@ func (ms *MergeStrings) combineStringInfosPerDirectory(directory string) error {
 	files, directories := getFilesAndDir(directory)
 	fileList := ms.matchFileToSourceLanguage(files, ms.SourceLanguage)
 
-	combinedMap := map[string]common.I18nStringInfo{}
-	for _, file := range fileList {
-		StringInfos, err := common.LoadI18nStringInfos(file)
-		if err != nil {
-			return err
-		}
+	var eg errgroup.Group
+	var combinedMap sync.Map
 
-		combineStringInfo(StringInfos, combinedMap)
+	for _, file := range fileList {
+		f := file // copy file for goroutine closure
+		eg.Go(func() error {
+			StringInfos, err := common.LoadI18nStringInfos(f)
+			if err != nil {
+				return fmt.Errorf("err retrieving file %v: %w", f, err)
+			}
+			for _, stringInfo := range StringInfos {
+				_, _ = combinedMap.LoadOrStore(stringInfo.ID, stringInfo)
+			}
+			return nil
+		})
 	}
 
-	filePath := filepath.Join(directory, ms.SourceLanguage+".all.json")
-	ms.I18nStringInfos = common.I18nStringInfoMapValues2Array(combinedMap)
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	combinedMap.Range(func(key interface{}, val interface{}) bool {
+		ms.I18nStringInfos = append(ms.I18nStringInfos, val.(common.I18nStringInfo))
+		return true
+	})
 	sort.Sort(ms)
+
+	filePath := filepath.Join(directory, ms.SourceLanguage+".all.json")
 	common.SaveI18nStringInfos(ms, ms.Options(), ms.I18nStringInfos, filePath)
 	ms.Println("i18n4go: saving combined language file: " + filePath)
 
@@ -108,14 +125,6 @@ func (ms MergeStrings) matchFileToSourceLanguage(files []string, lang string) (l
 		}
 	}
 	return
-}
-
-func combineStringInfo(stringInfoList []common.I18nStringInfo, combinedMap map[string]common.I18nStringInfo) {
-	for _, stringInfo := range stringInfoList {
-		if _, ok := combinedMap[stringInfo.ID]; !ok {
-			combinedMap[stringInfo.ID] = stringInfo
-		}
-	}
 }
 
 // sort.Interface methods
